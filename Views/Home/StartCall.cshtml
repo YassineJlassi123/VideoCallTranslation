@@ -44,7 +44,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 <script>
-   
     const roomId = '@ViewData["RoomId"]';
     let localStream;
     let peerConnection;
@@ -161,7 +160,12 @@
 
             const transcript = event.results[event.results.length - 1][0].transcript.trim();
             console.log("Transcribed text:", transcript);
-            if (!transcript) return;
+
+            // Only translate if there's actual speech
+            if (!transcript) {
+                console.log("No text to translate, skipping...");
+                return;
+            }
 
             const translation = await translateText(transcript);
             console.log("Translated text:", translation);
@@ -182,11 +186,9 @@
             console.log("Speech recognition ended");
             isRecognizing = false;
 
-            // Restart recognition if the user hasn't stopped speaking
-            if (Date.now() - lastSpokenTime < 3000) { // 3 seconds threshold
-                console.log("Restarting speech recognition...");
-                setTimeout(startSpeechRecognition, 1000); // Restart recognition after 1 second
-            }
+            // Restart recognition immediately when it ends
+            console.log("Restarting speech recognition immediately...");
+            startSpeechRecognition();
         };
 
         recognition.start();
@@ -233,5 +235,4 @@
 
         speechSynthesis.speak(utterance);
     }
-
 </script>
