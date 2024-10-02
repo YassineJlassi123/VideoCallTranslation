@@ -1,0 +1,14 @@
+﻿@model VideoCallRoom
+
+@{
+    ViewData["Title"] = "Join Room";
+}
+
+<h2>Join Room</h2>
+
+<form method="post" action="/home/VerifyRoom">
+    <input type="hidden" name="roomId" value="@Model.RoomId" />
+    <label for="password">Enter Room Password:</label>
+    <input type="password" name="password" id="password" required />
+    <button type="submit">Join Room</button>
+</form>
