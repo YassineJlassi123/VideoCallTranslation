@@ -140,13 +140,9 @@
     function startSpeechRecognition() {
         console.log("Starting speech recognition...");
 
-        if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-            alert("Speech recognition is not supported in this browser.");
-            console.warn("Speech recognition not supported");
-            return;
-        }
+       
 
-        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition = new  webkitSpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = false;
 
