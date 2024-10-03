@@ -135,7 +135,8 @@
     // Translation functionality
     let recognition;
     let isRecognizing = false;
-    let lastSpokenTime;
+    let lastRecognizedText = "";
+    let transcript;
 
     function startSpeechRecognition() {
         console.log("Starting speech recognition...");
@@ -160,24 +161,25 @@
         recognition.onresult = async (event) => {
             console.log("Speech recognition result:", event);
 
-            const transcript = event.results[event.results.length - 1][0].transcript.trim();
+            transcript = event.results[event.results.length - 1][0].transcript.trim();
             console.log("Transcribed text:", transcript);
+            if (transcript && transcript !== lastRecognizedText) {
+                lastRecognizedText = transcript;  // Store for comparison to avoid repeated actions
 
-            // Only translate if there's actual speech and it's different from the last recognized text
-            if (!transcript || transcript === lastRecognizedText) {
-                console.log("No new text to translate, skipping...");
-                return;
-            }
+                console.log("Translating text:", transcript);
 
-            lastRecognizedText = transcript; // Update the last recognized text
+                const translation = await translateText(transcript);
+                console.log("Translated text:", translation);
 
-            const translation = await translateText(transcript);
-            console.log("Translated text:", translation);
+                // Update the UI with the translated text
+                document.getElementById('translatedText').textContent = translation;
 
-            document.getElementById('translatedText').textContent = translation;
-            speakTranslation(translation);
-        };
+                // Speak out the translation
+                speakTranslation(translation);
 
+
+            };
+        }
         recognition.onerror = (event) => {
             console.error("Speech recognition error:", event.error);
             if (event.error !== 'no-speech') {
@@ -185,14 +187,12 @@
             }
         };
 
-        recognition.onend = () => {
-            console.log("Speech recognition ended, restarting...");
-            recognition.start(); // Restart recognition automatically
-        };
+       
 
+           
+        
         recognition.start();
     }
-
 
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
