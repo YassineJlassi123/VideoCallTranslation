@@ -47,6 +47,11 @@
     const roomId = '@ViewData["RoomId"]';
     let localStream;
     let peerConnection;
+    let recognition; // Declare recognition here
+    let isRecognizing = false;
+    let lastRecognizedText = ""; // Move this variable to the outer scope
+    let transcript;
+
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     const connection = new signalR.HubConnectionBuilder()
@@ -92,9 +97,6 @@
             await connection.invoke("SendOffer", roomId, JSON.stringify(offer));
             console.log("Sent offer");
 
-            // Automatically start speech recognition
-            
-
         } catch (error) {
             console.error("Error starting the call:", error);
         }
@@ -130,28 +132,18 @@
         console.log("User left:", userId);
     });
 
+    // Ensure this is called after its definition
     startCall();
 
     // Translation functionality
-    let recognition;
-    let isRecognizing = false;
-    let lastRecognizedText = "";
-    let transcript;
-
     function startSpeechRecognition() {
         console.log("Starting speech recognition...");
 
-        if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-            alert("Speech recognition is not supported in this browser.");
-            console.warn("Speech recognition not supported");
-            return;
-        }
+       
 
-        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition = new webkitSpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = false;
-
-        let lastRecognizedText = ""; // Variable to store the last recognized text
 
         recognition.onstart = () => {
             isRecognizing = true;
@@ -176,10 +168,9 @@
 
                 // Speak out the translation
                 speakTranslation(translation);
+            }
+        };
 
-
-            };
-        }
         recognition.onerror = (event) => {
             console.error("Speech recognition error:", event.error);
             if (event.error !== 'no-speech') {
@@ -187,10 +178,6 @@
             }
         };
 
-       
-
-           
-        
         recognition.start();
     }
 
@@ -235,5 +222,8 @@
 
         speechSynthesis.speak(utterance);
     }
+
+    // Start speech recognition after the call starts
     startSpeechRecognition();
 </script>
+
