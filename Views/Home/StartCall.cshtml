@@ -132,37 +132,32 @@
 
     startCall();
 
+    // Translation functionality
     let recognition;
-<<<<<<< HEAD
     let isRecognizing = false;
     let lastRecognizedText = "";
     let transcript;
-=======
-let isRecognizing = false;
->>>>>>> b69ebd6f2b6c0a7001e1f481a44e058926c1149e
 
-function startSpeechRecognition() {
-    console.log("Starting speech recognition...");
+    function startSpeechRecognition() {
+        console.log("Starting speech recognition...");
 
-    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-        alert("Speech recognition is not supported in this browser.");
-        console.warn("Speech recognition not supported");
-        return;
-    }
+        if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+            alert("Speech recognition is not supported in this browser.");
+            console.warn("Speech recognition not supported");
+            return;
+        }
 
-    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = false; // Changed to false for better mobile compatibility
-    recognition.interimResults = false;
+        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = true;
+        recognition.interimResults = false;
 
-    recognition.onstart = () => {
-        isRecognizing = true;
-        console.log("Speech recognition started");
-    };
+        let lastRecognizedText = ""; // Variable to store the last recognized text
 
-    recognition.onresult = async (event) => {
-        console.log("Speech recognition result:", event);
+        recognition.onstart = () => {
+            isRecognizing = true;
+            console.log("Speech recognition started");
+        };
 
-<<<<<<< HEAD
         recognition.onresult = async (event) => {
             console.log("Speech recognition result:", event);
 
@@ -189,65 +184,15 @@ function startSpeechRecognition() {
             console.error("Speech recognition error:", event.error);
             if (event.error !== 'no-speech') {
                 recognition.start(); // Restart recognition on errors (if necessary)
-=======
-        const transcript = event.results[0][0].transcript.trim();
-        console.log("Transcribed text:", transcript);
-
-        if (transcript) {
-            const translation = await translateText(transcript);
-            console.log("Translated text:", translation);
-
-            document.getElementById('translatedText').textContent = translation;
-            speakTranslation(translation);
-        }
-    };
-
-    recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-        isRecognizing = false;
-        if (event.error === 'not-allowed') {
-            alert("Microphone access is required for speech recognition. Please allow microphone access and try again.");
-        } else {
-            alert("Speech recognition error: " + event.error);
-        }
-    };
-
-    recognition.onend = () => {
-        console.log("Speech recognition ended");
-        isRecognizing = false;
-        // Restart recognition after a short delay
-        setTimeout(() => {
-            if (!isRecognizing) {
-                startSpeechRecognition();
->>>>>>> b69ebd6f2b6c0a7001e1f481a44e058926c1149e
             }
-        }, 1000);
-    };
+        };
 
-<<<<<<< HEAD
        
 
            
         
         recognition.start();
     }
-=======
-    // Request microphone permission explicitly
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(() => {
-            recognition.start();
-        })
-        .catch((err) => {
-            console.error("Error accessing microphone:", err);
-            alert("Unable to access the microphone. Please ensure you've granted the necessary permissions.");
-        });
-}
-
-// Call this function to start speech recognition
-startSpeechRecognition();
-
-// The rest of your code (translateText and speakTranslation functions) remains the same
->>>>>>> b69ebd6f2b6c0a7001e1f481a44e058926c1149e
 
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
