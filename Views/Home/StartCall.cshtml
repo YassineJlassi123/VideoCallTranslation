@@ -93,7 +93,7 @@
             console.log("Sent offer");
 
             // Automatically start speech recognition
-            startSpeechRecognition();
+            
 
         } catch (error) {
             console.error("Error starting the call:", error);
@@ -235,4 +235,5 @@
 
         speechSynthesis.speak(utterance);
     }
+    startSpeechRecognition();
 </script>
