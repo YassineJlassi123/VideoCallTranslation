@@ -47,7 +47,7 @@
     const roomId = '@ViewData["RoomId"]';
     let localStream;
     let peerConnection;
-    let recognition; // Declare recognition here
+    let recognition = new webkitSpeechRecognition(); // Declare recognition here
     let isRecognizing = false;
     let lastRecognizedText = ""; // Move this variable to the outer scope
     let transcript;
@@ -134,21 +134,13 @@
 
     // Ensure this is called after its definition
     startCall();
-
-    // Translation functionality
-    function startSpeechRecognition() {
-        console.log("Starting speech recognition...");
-
-       
-
-        recognition = new webkitSpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-
-        recognition.onstart = () => {
-            isRecognizing = true;
-            console.log("Speech recognition started");
-        };
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    isRecognizing = true;
+    recognition.start();
+    
+        
+        
 
         recognition.onresult = async (event) => {
             console.log("Speech recognition result:", event);
@@ -171,15 +163,8 @@
             }
         };
 
-        recognition.onerror = (event) => {
-            console.error("Speech recognition error:", event.error);
-            if (event.error !== 'no-speech') {
-                recognition.start(); // Restart recognition on errors (if necessary)
-            }
-        };
+     
 
-        recognition.start();
-    }
 
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
@@ -222,8 +207,5 @@
 
         speechSynthesis.speak(utterance);
     }
-
-    // Start speech recognition after the call starts
-    startSpeechRecognition();
 </script>
 
