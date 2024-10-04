@@ -37,6 +37,11 @@
         </select>
     </div>
     <button id="startCallBtn" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors">Start Call</button>
+    <div id="controlsContainer" style="display: none;" class="mt-4">
+    <button id="toggleRecognition" onclick="toggleRecognition()" class="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors mb-2">Start Recognition</button>
+    <button onclick="endCall()" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors">End Call</button>
+</div>
+<div id="recognitionStatus" class="text-sm text-gray-600 mt-2"></div>
     <div id="translatedText" class="text-gray-600 mt-4"></div>
 </div>
 
@@ -97,12 +102,14 @@
             console.log("Sent offer");
 
             // Start speech recognition
-            startSpeechRecognition();
+            
 
         } catch (error) {
             console.error("Error starting the call:", error);
         }
     }
+
+    let recognitionTimeout;
 
     function startSpeechRecognition() {
         console.log("Starting speech recognition...");
@@ -116,30 +123,32 @@
             return;
         }
 
-        recognition.continuous = true;
+        recognition.continuous = false;
         recognition.interimResults = true;
         recognition.lang = document.getElementById('sourceLang').value;
 
         recognition.onstart = () => {
             console.log("Speech recognition started");
             isRecognizing = true;
+            document.getElementById('recognitionStatus').textContent = 'Listening...';
         };
 
         recognition.onend = () => {
             console.log("Speech recognition ended");
-            if (isRecognizing) {
-                console.log("Restarting speech recognition...");
-                recognition.start();
+            isRecognizing = false;
+            document.getElementById('recognitionStatus').textContent = 'Recognition ended';
+            if (document.getElementById('toggleRecognition').textContent === 'Stop Recognition') {
+                recognitionTimeout = setTimeout(() => {
+                    if (document.getElementById('toggleRecognition').textContent === 'Stop Recognition') {
+                        recognition.start();
+                    }
+                }, 1000);
             }
         };
 
         recognition.onerror = (event) => {
             console.error("Speech recognition error:", event.error);
-            if (event.error !== 'no-speech' && isRecognizing) {
-                console.log("Attempting to restart speech recognition...");
-                recognition.stop();
-                setTimeout(() => recognition.start(), 1000);
-            }
+            document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
         };
 
         recognition.onresult = async (event) => {
@@ -170,6 +179,17 @@
         };
 
         recognition.start();
+    }
+    function toggleRecognition() {
+        const toggleButton = document.getElementById('toggleRecognition');
+        if (isRecognizing) {
+            recognition.stop();
+            clearTimeout(recognitionTimeout);
+            toggleButton.textContent = 'Start Recognition';
+        } else {
+            startSpeechRecognition();
+            toggleButton.textContent = 'Stop Recognition';
+        }
     }
 
     async function translateText(text) {
@@ -250,9 +270,11 @@
         }
     });
 
+
     document.getElementById('startCallBtn').addEventListener('click', () => {
         startCall();
         document.getElementById('startCallBtn').style.display = 'none';
+        document.getElementById('controlsContainer').style.display = 'block';
     });
 
     function endCall() {
@@ -260,12 +282,16 @@
         if (recognition) {
             recognition.stop();
         }
+        clearTimeout(recognitionTimeout);
         if (peerConnection) {
             peerConnection.close();
         }
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
         }
-        // Additional cleanup as needed
+        document.getElementById('startCallBtn').style.display = 'block';
+        document.getElementById('controlsContainer').style.display = 'none';
+        document.getElementById('recognitionStatus').textContent = '';
+        document.getElementById('translatedText').textContent = '';
     }
 </script>
