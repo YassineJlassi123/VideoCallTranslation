@@ -21,7 +21,6 @@
             <option value="ja-JP">Japanese</option>
             <option value="ko-KR">Korean</option>
             <option value="ru-RU">Russian</option>
-            <!-- Add more languages as needed -->
         </select>
     </div>
     <div class="mb-4">
@@ -35,10 +34,10 @@
             <option value="ja-JP">Japanese</option>
             <option value="ko-KR">Korean</option>
             <option value="ru-RU">Russian</option>
-            <!-- Add more languages as needed -->
         </select>
     </div>
-    <div id="translatedText" class="text-gray-600"></div>
+    <button id="startCallBtn" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors">Start Call</button>
+    <div id="translatedText" class="text-gray-600 mt-4"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
@@ -47,9 +46,9 @@
     const roomId = '@ViewData["RoomId"]';
     let localStream;
     let peerConnection;
-    let recognition = new webkitSpeechRecognition(); // Declare recognition here
+    let recognition;
     let isRecognizing = false;
-    let lastRecognizedText = ""; // Move this variable to the outer scope
+    let lastRecognizedText = "";
     let transcript;
 
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -97,9 +96,118 @@
             await connection.invoke("SendOffer", roomId, JSON.stringify(offer));
             console.log("Sent offer");
 
+            // Start speech recognition
+            startSpeechRecognition();
+
         } catch (error) {
             console.error("Error starting the call:", error);
         }
+    }
+
+    function startSpeechRecognition() {
+        console.log("Starting speech recognition...");
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+        } else if ('SpeechRecognition' in window) {
+            recognition = new SpeechRecognition();
+        } else {
+            console.error("Speech recognition not supported in this browser");
+            return;
+        }
+
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = document.getElementById('sourceLang').value;
+
+        recognition.onstart = () => {
+            console.log("Speech recognition started");
+            isRecognizing = true;
+        };
+
+        recognition.onend = () => {
+            console.log("Speech recognition ended");
+            if (isRecognizing) {
+                console.log("Restarting speech recognition...");
+                recognition.start();
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error:", event.error);
+            if (event.error !== 'no-speech' && isRecognizing) {
+                console.log("Attempting to restart speech recognition...");
+                recognition.stop();
+                setTimeout(() => recognition.start(), 1000);
+            }
+        };
+
+        recognition.onresult = async (event) => {
+            console.log("Speech recognition result:", event);
+
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            console.log("Interim transcript:", interimTranscript);
+            console.log("Final transcript:", finalTranscript);
+
+            if (finalTranscript && finalTranscript !== lastRecognizedText) {
+                lastRecognizedText = finalTranscript;
+                console.log("Translating text:", finalTranscript);
+                const translation = await translateText(finalTranscript);
+                console.log("Translated text:", translation);
+                document.getElementById('translatedText').textContent = translation;
+                speakTranslation(translation);
+            }
+        };
+
+        recognition.start();
+    }
+
+    async function translateText(text) {
+        const sourceLang = document.getElementById('sourceLang').value;
+        const targetLang = document.getElementById('targetLang').value;
+
+        console.log(`Translating from ${sourceLang} to ${targetLang}...`);
+
+        try {
+            const response = await fetch('/Home/Command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ Text: text, SourceLang: sourceLang, TargetLang: targetLang }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Network response was not ok");
+            }
+
+            const data = await response.json();
+            console.log("Translation response:", data);
+            return data.translatedText;
+        } catch (error) {
+            console.error("Translation error:", error);
+            return "Translation failed: " + error.message;
+        }
+    }
+
+    function speakTranslation(translation) {
+        const targetLang = document.getElementById('targetLang').value;
+        console.log(`Speaking translation in ${targetLang}`);
+
+        const utterance = new SpeechSynthesisUtterance(translation);
+        utterance.lang = targetLang;
+
+        speechSynthesis.speak(utterance);
     }
 
     connection.on("ReceiveOffer", async (offerString) => {
@@ -132,80 +240,32 @@
         console.log("User left:", userId);
     });
 
-    // Ensure this is called after its definition
-    startCall();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    isRecognizing = true;
-    recognition.start();
-    
-        
-        
-
-        recognition.onresult = async (event) => {
-            console.log("Speech recognition result:", event);
-
-            transcript = event.results[event.results.length - 1][0].transcript.trim();
-            console.log("Transcribed text:", transcript);
-            if (transcript && transcript !== lastRecognizedText) {
-                lastRecognizedText = transcript;  // Store for comparison to avoid repeated actions
-
-                console.log("Translating text:", transcript);
-
-                const translation = await translateText(transcript);
-                console.log("Translated text:", translation);
-
-                // Update the UI with the translated text
-                document.getElementById('translatedText').textContent = translation;
-
-                // Speak out the translation
-                speakTranslation(translation);
+    document.getElementById('sourceLang').addEventListener('change', (event) => {
+        if (recognition) {
+            recognition.lang = event.target.value;
+            if (isRecognizing) {
+                recognition.stop();
+                recognition.start();
             }
-        };
-
-     
-
-
-    async function translateText(text) {
-        const sourceLang = document.getElementById('sourceLang').value;
-        const targetLang = document.getElementById('targetLang').value;
-
-        console.log(`Translating from ${sourceLang} to ${targetLang}...`);
-
-        try {
-            const response = await fetch('/Home/Command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ Text: text, SourceLang: sourceLang, TargetLang: targetLang }),
-            });
-
-            if (!response.ok) {
-                throw new Error("Network response was not ok");
-            }
-
-            const data = await response.json();
-            console.log("Translation response:", data);
-            return data.translatedText;
-        } catch (error) {
-            console.error("Translation error:", error);
-            alert("Translation failed: " + error.message);  // Provide user feedback
-            return "Translation failed";
         }
-    }
+    });
 
-    function speakTranslation(translation) {
-        const targetLang = document.getElementById('targetLang').value;
-        console.log(`Speaking translation in ${targetLang}`);
+    document.getElementById('startCallBtn').addEventListener('click', () => {
+        startCall();
+        document.getElementById('startCallBtn').style.display = 'none';
+    });
 
-        const utterance = new SpeechSynthesisUtterance(translation);
-        utterance.lang = targetLang;
-
-        const voices = speechSynthesis.getVoices();
-        console.log("Available voices:", voices);
-
-        speechSynthesis.speak(utterance);
+    function endCall() {
+        isRecognizing = false;
+        if (recognition) {
+            recognition.stop();
+        }
+        if (peerConnection) {
+            peerConnection.close();
+        }
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        // Additional cleanup as needed
     }
 </script>
-
