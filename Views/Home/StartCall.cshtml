@@ -1,4 +1,4 @@
-﻿@{
+@{
     ViewData["Title"] = "Video Call with Translation";
 }
 
@@ -38,10 +38,10 @@
     </div>
     <button id="startCallBtn" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors">Start Call</button>
     <div id="controlsContainer" style="display: none;" class="mt-4">
-    <button id="toggleRecognition" onclick="toggleRecognition()" class="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors mb-2">Start Recognition</button>
-    <button onclick="endCall()" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors">End Call</button>
-</div>
-<div id="recognitionStatus" class="text-sm text-gray-600 mt-2"></div>
+        <button id="toggleRecognition" class="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 transition-colors mb-2">Start Recognition</button>
+        <button id="endCallBtn" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors">End Call</button>
+    </div>
+    <div id="recognitionStatus" class="text-sm text-gray-600 mt-2"></div>
     <div id="translatedText" class="text-gray-600 mt-4"></div>
 </div>
 
@@ -54,7 +54,9 @@
     let recognition;
     let isRecognizing = false;
     let lastRecognizedText = "";
-    let transcript;
+    let audioContext;
+    let mediaStreamSource;
+    let mediaStreamDestination;
 
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -70,6 +72,18 @@
             document.getElementById('localVideo').srcObject = localStream;
             console.log("Local stream started");
 
+            // Set up audio context for processing
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            mediaStreamSource = audioContext.createMediaStreamSource(localStream);
+            mediaStreamDestination = audioContext.createMediaStreamDestination();
+            mediaStreamSource.connect(mediaStreamDestination);
+
+            // Create a new stream that includes video from localStream and audio from mediaStreamDestination
+            const newStream = new MediaStream([
+                ...localStream.getVideoTracks(),
+                mediaStreamDestination.stream.getAudioTracks()[0]
+            ]);
+
             await connection.start();
             console.log("SignalR connection started");
 
@@ -77,7 +91,7 @@
             console.log(`Joined room: ${roomId}`);
 
             peerConnection = new RTCPeerConnection(configuration);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            newStream.getTracks().forEach(track => peerConnection.addTrack(track, newStream));
             console.log("Local tracks added to peer connection");
 
             peerConnection.ontrack = (event) => {
@@ -101,15 +115,13 @@
             await connection.invoke("SendOffer", roomId, JSON.stringify(offer));
             console.log("Sent offer");
 
-            // Start speech recognition
-            
+            document.getElementById('startCallBtn').style.display = 'none';
+            document.getElementById('controlsContainer').style.display = 'block';
 
         } catch (error) {
             console.error("Error starting the call:", error);
         }
     }
-
-    let recognitionTimeout;
 
     function startSpeechRecognition() {
         console.log("Starting speech recognition...");
@@ -123,7 +135,7 @@
             return;
         }
 
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = document.getElementById('sourceLang').value;
 
@@ -135,20 +147,19 @@
 
         recognition.onend = () => {
             console.log("Speech recognition ended");
-            isRecognizing = false;
-            document.getElementById('recognitionStatus').textContent = 'Recognition ended';
-            if (document.getElementById('toggleRecognition').textContent === 'Stop Recognition') {
-                recognitionTimeout = setTimeout(() => {
-                    if (document.getElementById('toggleRecognition').textContent === 'Stop Recognition') {
-                        recognition.start();
-                    }
-                }, 1000);
+            if (isRecognizing) {
+                recognition.start();
+            } else {
+                document.getElementById('recognitionStatus').textContent = 'Recognition ended';
             }
         };
 
         recognition.onerror = (event) => {
             console.error("Speech recognition error:", event.error);
             document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
+            if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                restartRecognition();
+            }
         };
 
         recognition.onresult = async (event) => {
@@ -180,13 +191,24 @@
 
         recognition.start();
     }
+
+    function restartRecognition() {
+        if (isRecognizing) {
+            recognition.stop();
+            setTimeout(() => {
+                recognition.start();
+            }, 1000);
+        }
+    }
+
     function toggleRecognition() {
         const toggleButton = document.getElementById('toggleRecognition');
         if (isRecognizing) {
+            isRecognizing = false;
             recognition.stop();
-            clearTimeout(recognitionTimeout);
             toggleButton.textContent = 'Start Recognition';
         } else {
+            isRecognizing = true;
             startSpeechRecognition();
             toggleButton.textContent = 'Stop Recognition';
         }
@@ -270,24 +292,23 @@
         }
     });
 
-
-    document.getElementById('startCallBtn').addEventListener('click', () => {
-        startCall();
-        document.getElementById('startCallBtn').style.display = 'none';
-        document.getElementById('controlsContainer').style.display = 'block';
-    });
+    document.getElementById('startCallBtn').addEventListener('click', startCall);
+    document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
+    document.getElementById('endCallBtn').addEventListener('click', endCall);
 
     function endCall() {
         isRecognizing = false;
         if (recognition) {
             recognition.stop();
         }
-        clearTimeout(recognitionTimeout);
         if (peerConnection) {
             peerConnection.close();
         }
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
+        }
+        if (audioContext) {
+            audioContext.close();
         }
         document.getElementById('startCallBtn').style.display = 'block';
         document.getElementById('controlsContainer').style.display = 'none';
