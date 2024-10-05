@@ -68,9 +68,6 @@
             // Get video stream
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
 
-            // Get audio stream for WebRTC
-            const audioStreamForWebRTC = await navigator.mediaDevices.getUserMedia({ audio: true });
-
             // Set the video stream
             document.getElementById('localVideo').srcObject = videoStream;
             console.log("Local video stream started");
@@ -83,11 +80,9 @@
 
             peerConnection = new RTCPeerConnection(configuration);
 
-            // Add audio track to peer connection
-            audioStreamForWebRTC.getTracks().forEach(track => peerConnection.addTrack(track, audioStreamForWebRTC));
-            // Add video track to peer connection
+            // Add video track to peer connection only
             videoStream.getTracks().forEach(track => peerConnection.addTrack(track, videoStream));
-            console.log("Local tracks added to peer connection");
+            console.log("Local video track added to peer connection");
 
             peerConnection.ontrack = (event) => {
                 console.log("Remote stream received");
@@ -123,8 +118,16 @@
             .then((audioStream) => {
                 const audioContext = new AudioContext();
                 const source = audioContext.createMediaStreamSource(audioStream);
-                source.connect(audioContext.destination);
 
+                // Create a gain node to control volume
+                const gainNode = audioContext.createGain();
+                gainNode.gain.value = 0; // Set gain to 0 to mute
+
+                // Connect the source to the gain node and the gain node to the audio context's destination
+                source.connect(gainNode);
+                gainNode.connect(audioContext.destination); // This prevents your voice from being played back
+
+                // Initialize the speech recognition API
                 if ('webkitSpeechRecognition' in window) {
                     recognition = new webkitSpeechRecognition();
                 } else if ('SpeechRecognition' in window) {
@@ -138,58 +141,58 @@
                 recognition.interimResults = true;
                 recognition.lang = document.getElementById('sourceLang').value;
 
-        recognition.onstart = () => {
-            console.log("Speech recognition started");
-            isRecognizing = true;
-            document.getElementById('recognitionStatus').textContent = 'Listening...';
-        };
+                recognition.onstart = () => {
+                    console.log("Speech recognition started");
+                    isRecognizing = true;
+                    document.getElementById('recognitionStatus').textContent = 'Listening...';
+                };
 
-        recognition.onend = () => {
-            console.log("Speech recognition ended");
-            if (isRecognizing) {
+                recognition.onend = () => {
+                    console.log("Speech recognition ended");
+                    if (isRecognizing) {
+                        recognition.start();
+                    } else {
+                        document.getElementById('recognitionStatus').textContent = 'Recognition ended';
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error("Speech recognition error:", event.error);
+                    document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
+                    if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                        restartRecognition();
+                    }
+                };
+
+                recognition.onresult = async (event) => {
+                    console.log("Speech recognition result:", event);
+
+                    let interimTranscript = '';
+                    let finalTranscript = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        } else {
+                            interimTranscript += event.results[i][0].transcript;
+                        }
+                    }
+
+                    console.log("Interim transcript:", interimTranscript);
+                    console.log("Final transcript:", finalTranscript);
+
+                    if (finalTranscript && finalTranscript !== lastRecognizedText) {
+                        lastRecognizedText = finalTranscript;
+                        console.log("Translating text:", finalTranscript);
+                        const translation = await translateText(finalTranscript);
+                        console.log("Translated text:", translation);
+                        document.getElementById('translatedText').textContent = translation;
+                        speakTranslation(translation);
+                    }
+                };
+
                 recognition.start();
-            } else {
-                document.getElementById('recognitionStatus').textContent = 'Recognition ended';
-            }
-        };
-
-        recognition.onerror = (event) => {
-            console.error("Speech recognition error:", event.error);
-            document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
-            if (event.error === 'no-speech' || event.error === 'audio-capture') {
-                restartRecognition();
-            }
-        };
-
-        recognition.onresult = async (event) => {
-            console.log("Speech recognition result:", event);
-
-            let interimTranscript = '';
-            let finalTranscript = '';
-
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
-            }
-
-            console.log("Interim transcript:", interimTranscript);
-            console.log("Final transcript:", finalTranscript);
-
-            if (finalTranscript && finalTranscript !== lastRecognizedText) {
-                lastRecognizedText = finalTranscript;
-                console.log("Translating text:", finalTranscript);
-                const translation = await translateText(finalTranscript);
-                console.log("Translated text:", translation);
-                document.getElementById('translatedText').textContent = translation;
-                speakTranslation(translation);
-            }
-        };
-            
-        recognition.start();
-            })
+            });
     }
 
     function restartRecognition() {
@@ -213,11 +216,12 @@
             toggleButton.textContent = 'Stop Recognition';
         }
     }
+
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
         const targetLang = document.getElementById('targetLang').value;
 
-        console.log(`Translating from ${sourceLang} to ${targetLang}...`);
+       
 
         try {
             const response = await fetch('/Home/Command', {
@@ -240,21 +244,79 @@
             return "Translation failed: " + error.message;
         }
     }
-
     function speakTranslation(text) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = document.getElementById('targetLang').value;
-        window.speechSynthesis.speak(utterance);
+        const speech = new SpeechSynthesisUtterance(text);
+        speech.lang = document.getElementById('targetLang').value;
+
+        // This will get the audio output of the speech synthesis
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const mediaStreamDestination = audioContext.createMediaStreamDestination();
+
+        speech.onstart = () => {
+            console.log("Speech synthesis started");
+        };
+
+        speech.onend = () => {
+            console.log("Speech synthesis ended");
+        };
+
+        speech.onerror = (event) => {
+            console.error("Speech synthesis error:", event.error);
+        };
+
+        // Connect the SpeechSynthesis API to the MediaStreamDestination
+        const source = audioContext.createGain();
+        source.connect(mediaStreamDestination);
+
+        // Start speech synthesis
+        speechSynthesis.speak(speech);
+
+        // Create a stream from the destination
+        const translatedAudioStream = mediaStreamDestination.stream;
+
+        // Send the translated audio stream to the remote peer
+        translatedAudioStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, translatedAudioStream);
+        });
+
+        console.log("Translated audio track added to peer connection");
     }
+
 
     document.getElementById('startCallBtn').addEventListener('click', startCall);
     document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
-    document.getElementById('endCallBtn').addEventListener('click', () => {
+    document.getElementById('endCallBtn').addEventListener('click', endCall);
+
+    async function endCall() {
+        console.log("Ending call...");
+        if (recognition) {
+            recognition.stop();
+        }
+        await connection.stop();
         if (peerConnection) {
             peerConnection.close();
-            console.log("Call ended");
-            document.getElementById('startCallBtn').style.display = 'block';
-            document.getElementById('controlsContainer').style.display = 'none';
         }
+        console.log("Call ended");
+        document.getElementById('controlsContainer').style.display = 'none';
+        document.getElementById('startCallBtn').style.display = 'block';
+    }
+
+    connection.on("ReceiveOffer", async (offer) => {
+        console.log("Received offer:", offer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(offer)));
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        await connection.invoke("SendAnswer", roomId, JSON.stringify(answer));
+    });
+
+    connection.on("ReceiveAnswer", async (answer) => {
+        console.log("Received answer:", answer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+    });
+
+    connection.on("ReceiveIceCandidate", async (candidate) => {
+        console.log("Received ICE candidate:", candidate);
+        await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
     });
 </script>
