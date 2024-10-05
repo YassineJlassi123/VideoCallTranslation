@@ -54,9 +54,6 @@
     let recognition;
     let isRecognizing = false;
     let lastRecognizedText = "";
-    let audioContext;
-    let mediaStreamSource;
-    let mediaStreamDestination;
 
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -68,21 +65,13 @@
         try {
             console.log("Attempting to start the call...");
 
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-            console.log("Local stream started");
+            // Get video and audio separately
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Set up audio context for processing
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            mediaStreamSource = audioContext.createMediaStreamSource(localStream);
-            mediaStreamDestination = audioContext.createMediaStreamDestination();
-            mediaStreamSource.connect(mediaStreamDestination);
-
-            // Create a new stream that includes video from localStream and audio from mediaStreamDestination
-            const newStream = new MediaStream([
-                ...localStream.getVideoTracks(),
-                mediaStreamDestination.stream.getAudioTracks()[0]
-            ]);
+            // Set the video stream
+            document.getElementById('localVideo').srcObject = videoStream;
+            console.log("Local video stream started");
 
             await connection.start();
             console.log("SignalR connection started");
@@ -91,7 +80,11 @@
             console.log(`Joined room: ${roomId}`);
 
             peerConnection = new RTCPeerConnection(configuration);
-            newStream.getTracks().forEach(track => peerConnection.addTrack(track, newStream));
+
+            // Add audio track to peer connection
+            audioStream.getTracks().forEach(track => peerConnection.addTrack(track, audioStream));
+            // Add video track to peer connection
+            videoStream.getTracks().forEach(track => peerConnection.addTrack(track, videoStream));
             console.log("Local tracks added to peer connection");
 
             peerConnection.ontrack = (event) => {
@@ -213,7 +206,6 @@
             toggleButton.textContent = 'Stop Recognition';
         }
     }
-
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
         const targetLang = document.getElementById('targetLang').value;
@@ -242,77 +234,20 @@
         }
     }
 
-    function speakTranslation(translation) {
-        const targetLang = document.getElementById('targetLang').value;
-        console.log(`Speaking translation in ${targetLang}`);
-
-        const utterance = new SpeechSynthesisUtterance(translation);
-        utterance.lang = targetLang;
-
-        speechSynthesis.speak(utterance);
+    function speakTranslation(text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = document.getElementById('targetLang').value;
+        window.speechSynthesis.speak(utterance);
     }
-
-    connection.on("ReceiveOffer", async (offerString) => {
-        console.log("Received offer:", offerString);
-        const offer = JSON.parse(offerString);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        await connection.invoke("SendAnswer", roomId, JSON.stringify(answer));
-        console.log("Sent answer");
-    });
-
-    connection.on("ReceiveAnswer", async (answerString) => {
-        console.log("Received answer:", answerString);
-        const answer = JSON.parse(answerString);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    });
-
-    connection.on("ReceiveIceCandidate", async (candidateString) => {
-        console.log("Received ICE candidate:", candidateString);
-        const candidate = JSON.parse(candidateString);
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    });
-
-    connection.on("UserJoined", (userId) => {
-        console.log("User joined:", userId);
-    });
-
-    connection.on("UserLeft", (userId) => {
-        console.log("User left:", userId);
-    });
-
-    document.getElementById('sourceLang').addEventListener('change', (event) => {
-        if (recognition) {
-            recognition.lang = event.target.value;
-            if (isRecognizing) {
-                recognition.stop();
-                recognition.start();
-            }
-        }
-    });
 
     document.getElementById('startCallBtn').addEventListener('click', startCall);
     document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
-    document.getElementById('endCallBtn').addEventListener('click', endCall);
-
-    function endCall() {
-        isRecognizing = false;
-        if (recognition) {
-            recognition.stop();
-        }
+    document.getElementById('endCallBtn').addEventListener('click', () => {
         if (peerConnection) {
             peerConnection.close();
+            console.log("Call ended");
+            document.getElementById('startCallBtn').style.display = 'block';
+            document.getElementById('controlsContainer').style.display = 'none';
         }
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-        }
-        if (audioContext) {
-            audioContext.close();
-        }
-        document.getElementById('startCallBtn').style.display = 'block';
-        document.getElementById('controlsContainer').style.display = 'none';
-        document.getElementById('recognitionStatus').textContent = '';
-        document.getElementById('translatedText').textContent = '';
-    }
+    });
 </script>
