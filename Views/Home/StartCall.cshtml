@@ -65,9 +65,11 @@
         try {
             console.log("Attempting to start the call...");
 
-            // Get video and audio separately
+            // Get video stream
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            // Get audio stream for WebRTC
+            const audioStreamForWebRTC = await navigator.mediaDevices.getUserMedia({ audio: true });
 
             // Set the video stream
             document.getElementById('localVideo').srcObject = videoStream;
@@ -82,7 +84,7 @@
             peerConnection = new RTCPeerConnection(configuration);
 
             // Add audio track to peer connection
-            audioStream.getTracks().forEach(track => peerConnection.addTrack(track, audioStream));
+            audioStreamForWebRTC.getTracks().forEach(track => peerConnection.addTrack(track, audioStreamForWebRTC));
             // Add video track to peer connection
             videoStream.getTracks().forEach(track => peerConnection.addTrack(track, videoStream));
             console.log("Local tracks added to peer connection");
@@ -117,20 +119,24 @@
     }
 
     function startSpeechRecognition() {
-        console.log("Starting speech recognition...");
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then((audioStream) => {
+                const audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(audioStream);
+                source.connect(audioContext.destination);
 
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-        } else if ('SpeechRecognition' in window) {
-            recognition = new SpeechRecognition();
-        } else {
-            console.error("Speech recognition not supported in this browser");
-            return;
-        }
+                if ('webkitSpeechRecognition' in window) {
+                    recognition = new webkitSpeechRecognition();
+                } else if ('SpeechRecognition' in window) {
+                    recognition = new SpeechRecognition();
+                } else {
+                    console.error("Speech recognition not supported in this browser");
+                    return;
+                }
 
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = document.getElementById('sourceLang').value;
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = document.getElementById('sourceLang').value;
 
         recognition.onstart = () => {
             console.log("Speech recognition started");
@@ -181,8 +187,9 @@
                 speakTranslation(translation);
             }
         };
-
+            
         recognition.start();
+            })
     }
 
     function restartRecognition() {
