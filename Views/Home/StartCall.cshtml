@@ -61,6 +61,19 @@
         .withUrl("/VideoCallHub")
         .build();
 
+    const roomId = '@ViewData["RoomId"]';
+    let localStream;
+    let peerConnection;
+    let recognition;
+    let isRecognizing = false;
+    let lastRecognizedText = "";
+
+    const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/VideoCallHub")
+        .build();
+
     async function startCall() {
         try {
             console.log("Attempting to start the call...");
@@ -255,6 +268,8 @@
         await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
         console.log("Added ICE candidate");
     });
+
+    // Additional code for speech recognition and translation follows...
 
     document.getElementById('startCallBtn').addEventListener('click', startCall);
     document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
