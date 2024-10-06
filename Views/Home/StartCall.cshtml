@@ -54,6 +54,9 @@
     let recognition;
     let isRecognizing = false;
     let lastRecognizedText = "";
+    let audioContext;
+    let mediaStreamSource;
+    let mediaStreamDestination;
 
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -61,18 +64,25 @@
         .withUrl("/VideoCallHub")
         .build();
 
-   
-
     async function startCall() {
         try {
             console.log("Attempting to start the call...");
 
-            // Get video stream (disable audio)
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('localVideo').srcObject = localStream;
+            console.log("Local stream started");
 
-            // Set the video stream
-            document.getElementById('localVideo').srcObject = videoStream;
-            console.log("Local video stream started");
+            // Set up audio context for processing
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            mediaStreamSource = audioContext.createMediaStreamSource(localStream);
+            mediaStreamDestination = audioContext.createMediaStreamDestination();
+            mediaStreamSource.connect(mediaStreamDestination);
+
+            // Create a new stream that includes video from localStream and audio from mediaStreamDestination
+            const newStream = new MediaStream([
+                ...localStream.getVideoTracks(),
+                mediaStreamDestination.stream.getAudioTracks()[0]
+            ]);
 
             await connection.start();
             console.log("SignalR connection started");
@@ -81,10 +91,8 @@
             console.log(`Joined room: ${roomId}`);
 
             peerConnection = new RTCPeerConnection(configuration);
-
-            // Add video track to peer connection (no audio)
-            videoStream.getTracks().forEach(track => peerConnection.addTrack(track, videoStream));
-            console.log("Local video track added to peer connection");
+            newStream.getTracks().forEach(track => peerConnection.addTrack(track, newStream));
+            console.log("Local tracks added to peer connection");
 
             peerConnection.ontrack = (event) => {
                 console.log("Remote stream received");
@@ -116,85 +124,72 @@
     }
 
     function startSpeechRecognition() {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then((audioStream) => {
-                const audioContext = new AudioContext();
-                const source = audioContext.createMediaStreamSource(audioStream);
+        console.log("Starting speech recognition...");
 
-                // Create a gain node to mute the microphone (if needed for privacy)
-                const gainNode = audioContext.createGain();
-                gainNode.gain.value = 0; // Set gain to 0 to mute
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+        } else if ('SpeechRecognition' in window) {
+            recognition = new SpeechRecognition();
+        } else {
+            console.error("Speech recognition not supported in this browser");
+            return;
+        }
 
-                // Connect the source to the gain node and the gain node to the audio context's destination
-                source.connect(gainNode);
-                gainNode.connect(audioContext.destination); // This prevents playback of your voice
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = document.getElementById('sourceLang').value;
 
-                // Initialize the speech recognition API
-                if ('webkitSpeechRecognition' in window) {
-                    recognition = new webkitSpeechRecognition();
-                } else if ('SpeechRecognition' in window) {
-                    recognition = new SpeechRecognition();
-                } else {
-                    console.error("Speech recognition not supported in this browser");
-                    return;
-                }
+        recognition.onstart = () => {
+            console.log("Speech recognition started");
+            isRecognizing = true;
+            document.getElementById('recognitionStatus').textContent = 'Listening...';
+        };
 
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.lang = document.getElementById('sourceLang').value;
-
-                recognition.onstart = () => {
-                    console.log("Speech recognition started");
-                    isRecognizing = true;
-                    document.getElementById('recognitionStatus').textContent = 'Listening...';
-                };
-
-                recognition.onend = () => {
-                    console.log("Speech recognition ended");
-                    if (isRecognizing) {
-                        recognition.start();
-                    } else {
-                        document.getElementById('recognitionStatus').textContent = 'Recognition ended';
-                    }
-                };
-
-                recognition.onerror = (event) => {
-                    console.error("Speech recognition error:", event.error);
-                    document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
-                    if (event.error === 'no-speech' || event.error === 'audio-capture') {
-                        restartRecognition();
-                    }
-                };
-
-                recognition.onresult = async (event) => {
-                    console.log("Speech recognition result:", event);
-
-                    let interimTranscript = '';
-                    let finalTranscript = '';
-
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            finalTranscript += event.results[i][0].transcript;
-                        } else {
-                            interimTranscript += event.results[i][0].transcript;
-                        }
-                    }
-
-                    console.log("Interim transcript:", interimTranscript);
-                    console.log("Final transcript:", finalTranscript);
-
-                    if (finalTranscript && finalTranscript !== lastRecognizedText) {
-                        lastRecognizedText = finalTranscript;
-                        console.log("Translating text:", finalTranscript);
-                        const translation = await translateText(finalTranscript);
-                        console.log("Translated text:", translation);
-                        document.getElementById('translatedText').textContent = translation;
-                        speakTranslation(translation);
-                    }
-                };
-
+        recognition.onend = () => {
+            console.log("Speech recognition ended");
+            if (isRecognizing) {
                 recognition.start();
-            });
+            } else {
+                document.getElementById('recognitionStatus').textContent = 'Recognition ended';
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error:", event.error);
+            document.getElementById('recognitionStatus').textContent = 'Error: ' + event.error;
+            if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                restartRecognition();
+            }
+        };
+
+        recognition.onresult = async (event) => {
+            console.log("Speech recognition result:", event);
+
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            console.log("Interim transcript:", interimTranscript);
+            console.log("Final transcript:", finalTranscript);
+
+            if (finalTranscript && finalTranscript !== lastRecognizedText) {
+                lastRecognizedText = finalTranscript;
+                console.log("Translating text:", finalTranscript);
+                const translation = await translateText(finalTranscript);
+                console.log("Translated text:", translation);
+                document.getElementById('translatedText').textContent = translation;
+                speakTranslation(translation);
+            }
+        };
+
+        recognition.start();
     }
 
     function restartRecognition() {
@@ -223,49 +218,101 @@
         const sourceLang = document.getElementById('sourceLang').value;
         const targetLang = document.getElementById('targetLang').value;
 
+        console.log(`Translating from ${sourceLang} to ${targetLang}...`);
+
         try {
-            const response = await fetch('/home/command', {
+            const response = await fetch('/Home/Command', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, sourceLang, targetLang })
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ Text: text, SourceLang: sourceLang, TargetLang: targetLang }),
             });
 
-            const result = await response.json();
-            return result.translatedText;
+            if (!response.ok) {
+                throw new Error("Network response was not ok");
+            }
+
+            const data = await response.json();
+            console.log("Translation response:", data);
+            return data.translatedText;
         } catch (error) {
-            console.error("Error translating text:", error);
-            return 'Translation error';
+            console.error("Translation error:", error);
+            return "Translation failed: " + error.message;
         }
     }
 
-    function speakTranslation(text) {
+    function speakTranslation(translation) {
         const targetLang = document.getElementById('targetLang').value;
-        const speechSynthesis = window.speechSynthesis;
-        const utterance = new SpeechSynthesisUtterance(text);
+        console.log(`Speaking translation in ${targetLang}`);
+
+        const utterance = new SpeechSynthesisUtterance(translation);
         utterance.lang = targetLang;
+
         speechSynthesis.speak(utterance);
     }
 
-    connection.on("ReceiveAnswer", async (answer) => {
-        console.log("Received answer:", answer);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
-        console.log("Set remote description");
+    connection.on("ReceiveOffer", async (offerString) => {
+        console.log("Received offer:", offerString);
+        const offer = JSON.parse(offerString);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        await connection.invoke("SendAnswer", roomId, JSON.stringify(answer));
+        console.log("Sent answer");
     });
 
-    connection.on("ReceiveIceCandidate", async (candidate) => {
-        console.log("Received ICE candidate:", candidate);
-        await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
-        console.log("Added ICE candidate");
+    connection.on("ReceiveAnswer", async (answerString) => {
+        console.log("Received answer:", answerString);
+        const answer = JSON.parse(answerString);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
-    // Additional code for speech recognition and translation follows...
+    connection.on("ReceiveIceCandidate", async (candidateString) => {
+        console.log("Received ICE candidate:", candidateString);
+        const candidate = JSON.parse(candidateString);
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    connection.on("UserJoined", (userId) => {
+        console.log("User joined:", userId);
+    });
+
+    connection.on("UserLeft", (userId) => {
+        console.log("User left:", userId);
+    });
+
+    document.getElementById('sourceLang').addEventListener('change', (event) => {
+        if (recognition) {
+            recognition.lang = event.target.value;
+            if (isRecognizing) {
+                recognition.stop();
+                recognition.start();
+            }
+        }
+    });
 
     document.getElementById('startCallBtn').addEventListener('click', startCall);
     document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
-    document.getElementById('endCallBtn').addEventListener('click', () => {
-        peerConnection.close();
-        console.log("Call ended");
-        document.getElementById('controlsContainer').style.display = 'none';
+    document.getElementById('endCallBtn').addEventListener('click', endCall);
+
+    function endCall() {
+        isRecognizing = false;
+        if (recognition) {
+            recognition.stop();
+        }
+        if (peerConnection) {
+            peerConnection.close();
+        }
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        if (audioContext) {
+            audioContext.close();
+        }
         document.getElementById('startCallBtn').style.display = 'block';
-    });
+        document.getElementById('controlsContainer').style.display = 'none';
+        document.getElementById('recognitionStatus').textContent = '';
+        document.getElementById('translatedText').textContent = '';
+    }
 </script>
