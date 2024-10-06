@@ -65,9 +65,8 @@
         try {
             console.log("Attempting to start the call...");
 
-            // Get video stream
+            // Get video stream (disable audio)
             const videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-
 
             // Set the video stream
             document.getElementById('localVideo').srcObject = videoStream;
@@ -81,7 +80,7 @@
 
             peerConnection = new RTCPeerConnection(configuration);
 
-            // Add video track to peer connection only
+            // Add video track to peer connection (no audio)
             videoStream.getTracks().forEach(track => peerConnection.addTrack(track, videoStream));
             console.log("Local video track added to peer connection");
 
@@ -120,13 +119,13 @@
                 const audioContext = new AudioContext();
                 const source = audioContext.createMediaStreamSource(audioStream);
 
-                // Create a gain node to control volume
+                // Create a gain node to mute the microphone (if needed for privacy)
                 const gainNode = audioContext.createGain();
                 gainNode.gain.value = 0; // Set gain to 0 to mute
 
                 // Connect the source to the gain node and the gain node to the audio context's destination
                 source.connect(gainNode);
-                gainNode.connect(audioContext.destination); // This prevents your voice from being played back
+                gainNode.connect(audioContext.destination); // This prevents playback of your voice
 
                 // Initialize the speech recognition API
                 if ('webkitSpeechRecognition' in window) {
@@ -222,102 +221,47 @@
         const sourceLang = document.getElementById('sourceLang').value;
         const targetLang = document.getElementById('targetLang').value;
 
-       
-
         try {
-            const response = await fetch('/Home/Command', {
+            const response = await fetch('/home/command', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ Text: text, SourceLang: sourceLang, TargetLang: targetLang }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, sourceLang, targetLang })
             });
 
-            if (!response.ok) {
-                throw new Error("Network response was not ok");
-            }
-
-            const data = await response.json();
-            console.log("Translation response:", data);
-            return data.translatedText;
+            const result = await response.json();
+            return result.translatedText;
         } catch (error) {
-            console.error("Translation error:", error);
-            return "Translation failed: " + error.message;
+            console.error("Error translating text:", error);
+            return 'Translation error';
         }
     }
+
     function speakTranslation(text) {
-        const speech = new SpeechSynthesisUtterance(text);
-        speech.lang = document.getElementById('targetLang').value;
-
-        // This will get the audio output of the speech synthesis
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const mediaStreamDestination = audioContext.createMediaStreamDestination();
-
-        speech.onstart = () => {
-            console.log("Speech synthesis started");
-        };
-
-        speech.onend = () => {
-            console.log("Speech synthesis ended");
-        };
-
-        speech.onerror = (event) => {
-            console.error("Speech synthesis error:", event.error);
-        };
-
-        // Connect the SpeechSynthesis API to the MediaStreamDestination
-        const source = audioContext.createGain();
-        source.connect(mediaStreamDestination);
-
-        // Start speech synthesis
-        speechSynthesis.speak(speech);
-
-        // Create a stream from the destination
-        const translatedAudioStream = mediaStreamDestination.stream;
-
-        // Send the translated audio stream to the remote peer
-        translatedAudioStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, translatedAudioStream);
-        });
-
-        console.log("Translated audio track added to peer connection");
+        const targetLang = document.getElementById('targetLang').value;
+        const speechSynthesis = window.speechSynthesis;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = targetLang;
+        speechSynthesis.speak(utterance);
     }
-
-
-    document.getElementById('startCallBtn').addEventListener('click', startCall);
-    document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
-    document.getElementById('endCallBtn').addEventListener('click', endCall);
-
-    async function endCall() {
-        console.log("Ending call...");
-        if (recognition) {
-            recognition.stop();
-        }
-        await connection.stop();
-        if (peerConnection) {
-            peerConnection.close();
-        }
-        console.log("Call ended");
-        document.getElementById('controlsContainer').style.display = 'none';
-        document.getElementById('startCallBtn').style.display = 'block';
-    }
-
-    connection.on("ReceiveOffer", async (offer) => {
-        console.log("Received offer:", offer);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(offer)));
-
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        await connection.invoke("SendAnswer", roomId, JSON.stringify(answer));
-    });
 
     connection.on("ReceiveAnswer", async (answer) => {
         console.log("Received answer:", answer);
         await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(answer)));
+        console.log("Set remote description");
     });
 
     connection.on("ReceiveIceCandidate", async (candidate) => {
         console.log("Received ICE candidate:", candidate);
         await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
+        console.log("Added ICE candidate");
+    });
+
+    document.getElementById('startCallBtn').addEventListener('click', startCall);
+    document.getElementById('toggleRecognition').addEventListener('click', toggleRecognition);
+    document.getElementById('endCallBtn').addEventListener('click', () => {
+        peerConnection.close();
+        console.log("Call ended");
+        document.getElementById('controlsContainer').style.display = 'none';
+        document.getElementById('startCallBtn').style.display = 'block';
     });
 </script>
