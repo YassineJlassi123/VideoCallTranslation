@@ -59,22 +59,14 @@
 
     async function startCall() {
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            // Request only video (audio: false)
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             document.getElementById('localVideo').srcObject = localStream;
 
-            // Create new stream for audio processing
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            mediaStreamSource = audioContext.createMediaStreamSource(localStream);
-            mediaStreamDestination = audioContext.createMediaStreamDestination();
-            mediaStreamSource.connect(mediaStreamDestination);
-
-            const newStream = new MediaStream([...localStream.getVideoTracks(), mediaStreamDestination.stream.getAudioTracks()[0]]);
-
-            await connection.start();
-            await connection.invoke("JoinRoom", roomId);
-
             peerConnection = new RTCPeerConnection(configuration);
-            newStream.getTracks().forEach(track => peerConnection.addTrack(track, newStream));
+
+            // Add only video tracks to the peer connection
+            localStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
                 document.getElementById('remoteVideo').srcObject = event.streams[0];
@@ -86,15 +78,25 @@
                 }
             };
 
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            await connection.invoke("SendOffer", roomId, JSON.stringify(offer));
+            // Start SignalR connection and join the room once connected
+            await connection.start().then(async () => {
+                console.log('SignalR connection established.');
+                await connection.invoke("JoinRoom", roomId); // Ensure connection is ready
 
-            document.getElementById('controlsContainer').classList.remove('hidden');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                await connection.invoke("SendOffer", roomId, JSON.stringify(offer)); // Send offer only after connection is ready
+
+                document.getElementById('controlsContainer').classList.remove('hidden');
+            }).catch((err) => {
+                console.error("Error starting SignalR connection:", err);
+            });
+
         } catch (error) {
             console.error("Error starting call:", error);
         }
     }
+
 
     function startSpeechRecognition() {
         recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
@@ -198,11 +200,9 @@
         peerConnection = null;
         document.getElementById('controlsContainer').classList.add('hidden');
     });
-
     window.onload = () => {
-        startSpeechRecognition();
-        startCall();
-       
+        startSpeechRecognition();  // Start speech recognition first
+        setTimeout(startCall, 1000);  // Then start WebRTC call with a delay to give speech recognition priority
     };
 
     document.getElementById('endCallBtn').onclick = async () => {
