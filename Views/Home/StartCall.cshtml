@@ -131,15 +131,18 @@
             // Only proceed if the final transcript is different from the last recognized text
             if (finalTranscript && finalTranscript !== lastRecognizedText) {
                 lastRecognizedText = finalTranscript;
+                recognition.stop();
 
                 // Translate the new text
                 const translation = await translateText(finalTranscript);
 
                 // Display the translation
                 document.getElementById('translatedText').textContent = translation;
-
+                if (translation) {
+                    speakTranslation(translation);
+                }
                 // Speak the translation only after the final transcript
-                speakTranslation(translation);
+               
 
                 // Clear final transcript so it doesn't repeat
                 lastRecognizedText = '';
@@ -149,11 +152,7 @@
         recognition.onerror = (event) => {
             document.getElementById('recognitionStatus').textContent = `Error ${event.error}`;
         };
-        recognition.onend = () => {
-            // Optional: You can change the message here if you want
-            document.getElementById('recognitionStatus').textContent = 'Restarting speech recognition...';
-            recognition.start(); // Restart speech recognition automatically
-        };
+       
 
         recognition.start();
     }
@@ -182,12 +181,14 @@
     }
 
     function speakTranslation(translation) {
-        // Cancel any ongoing speech synthesis to avoid overlapping repeats
-        speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(translation);
         utterance.lang = document.getElementById('targetLang').value;
         speechSynthesis.speak(utterance);
+        utterance.onend = () => {
+            console.log("Speech synthesis completed, restarting speech recognition.");
+            recognition.start();  // Restart speech recognition after speaking
+        };
     }
 
     // SignalR listeners
