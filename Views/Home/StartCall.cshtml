@@ -115,12 +115,18 @@
 
         recognition.onresult = async (event) => {
             let finalTranscript = '';
+            let interimTranscript = '';
 
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
                     finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
                 }
             }
+
+            // Display interim results but do not translate or speak them
+            document.getElementById('recognitionStatus').textContent = interimTranscript;
 
             // Only proceed if the final transcript is different from the last recognized text
             if (finalTranscript && finalTranscript !== lastRecognizedText) {
@@ -135,8 +141,8 @@
                 // Speak the translation only after the final transcript
                 speakTranslation(translation);
 
-                // Reset the recognized text to avoid repetitions
-                lastRecognizedText = ''; // Reset to prevent repeating the old text
+                // Clear final transcript so it doesn't repeat
+                lastRecognizedText = '';
             }
         };
 
