@@ -132,7 +132,7 @@
                 // Display the translation
                 document.getElementById('translatedText').textContent = translation;
 
-                // Speak the translation
+                // Speak the translation only after the final transcript
                 speakTranslation(translation);
 
                 // Reset the recognized text to avoid repetitions
@@ -142,6 +142,11 @@
 
         recognition.onerror = (event) => {
             document.getElementById('recognitionStatus').textContent = `Error ${event.error}`;
+        };
+        recognition.onend = () => {
+            // Optional: You can change the message here if you want
+            document.getElementById('recognitionStatus').textContent = 'Restarting speech recognition...';
+            recognition.start(); // Restart speech recognition automatically
         };
 
         recognition.start();
@@ -171,6 +176,9 @@
     }
 
     function speakTranslation(translation) {
+        // Cancel any ongoing speech synthesis to avoid overlapping repeats
+        speechSynthesis.cancel();
+
         const utterance = new SpeechSynthesisUtterance(translation);
         utterance.lang = document.getElementById('targetLang').value;
         speechSynthesis.speak(utterance);
