@@ -64,7 +64,8 @@
 
     async function startCall() {
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            // Request only video, no audio
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             const localVideo = document.getElementById('localVideo');
             if (localVideo) {
                 localVideo.srcObject = localStream;
@@ -75,7 +76,8 @@
 
             peerConnection = new RTCPeerConnection(configuration);
 
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            // Only add video tracks, no audio tracks
+            localStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
                 const remoteVideo = document.getElementById('remoteVideo');
