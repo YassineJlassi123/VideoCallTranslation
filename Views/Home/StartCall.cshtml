@@ -181,14 +181,34 @@
     }
 
     function speakTranslation(translation) {
-
         const utterance = new SpeechSynthesisUtterance(translation);
         utterance.lang = document.getElementById('targetLang').value;
+
+        // Pause speech recognition on mobile devices to avoid conflicts
+        if (isMobileBrowser()) {
+            recognition.abort();
+        }
+
         speechSynthesis.speak(utterance);
+
         utterance.onend = () => {
-            console.log("Speech synthesis completed, restarting speech recognition.");
-            recognition.start();  // Restart speech recognition after speaking
+            console.log("Speech synthesis completed.");
+
+            // Delay restarting speech recognition to avoid conflicts
+            setTimeout(() => {
+                if (!isMobileBrowser()) {
+                    recognition.start(); // Restart only on desktop
+                } else {
+                    // If on mobile, you might want to let user manually trigger recognition again
+                    recognition.start();
+                }
+            }, 500);  // Small delay to ensure clean restart
         };
+    }
+
+    function isMobileBrowser() {
+        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        return /android|iPad|iPhone|iPod/i.test(userAgent);
     }
 
     // SignalR listeners
