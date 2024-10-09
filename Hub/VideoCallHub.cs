@@ -83,6 +83,6 @@ Target Language: {targetLang}";
         var response = await _cohereService.GetChatResponseAsync(prompt);
 
         // Send the translated text back to the room
-        await Clients.Group(roomId).SendAsync("ReceiveTranslation", response.Trim(), sourceLang, targetLang);
+        await Clients.OthersInGroup(roomId).SendAsync("ReceiveTranslation", response.Trim(), sourceLang, targetLang);
     }
 }

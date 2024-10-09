@@ -2,48 +2,79 @@
     ViewData["Title"] = "Video Call with Translation";
 }
 
-<h2 class="text-lg md:text-xl font-semibold text-center mb-4">Video Call with Translation</h2>
+<div class="bg-background dark:bg-foreground h-screen w-full flex flex-col justify-center items-center">
+    <!-- Video Container -->
+    <div class="relative w-full h-full">
+        <div class="absolute inset-0 flex justify-center items-center">
+            <div class="w-full h-full relative">
+                <div class="w-full h-full bg-card dark:bg-card-foreground flex">
+                    <!-- Local Video -->
+                    <div class="w-1/2 h-full relative">
+                        <video id="localVideo" autoplay muted class="w-full h-full object-cover rounded-lg shadow-md"></video>
+                    </div>
+                    <!-- Remote Video -->
+                    <div class="w-1/2 h-full relative">
+                        <video id="remoteVideo" autoplay class="w-full h-full object-cover rounded-lg shadow-md"></video>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<div id="videoContainer" class="flex flex-col md:flex-row justify-center items-center mb-4">
-    <video id="localVideo" autoplay muted class="w-full md:w-1/2 h-auto rounded-lg shadow-md"></video>
-    <video id="remoteVideo" autoplay class="w-full md:w-1/2 h-auto rounded-lg shadow-md"></video>
+    <!-- Translation Container -->
+    <div class="mt-4 p-4 bg-card dark:bg-card-foreground text-center">
+        <div class="mt-4 p-4 bg-card dark:bg-card-foreground text-center">
+            <div id="translatedText" class="text-gray-600 dark:text-gray-300 mt-4 max-h-20 overflow-y-auto">
+                <ul id="translationList"></ul>
+            </div>
+        </div>
+        <div style="width:40vh" class="max-w-lg mx-auto p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <!-- Source Language Selector -->
+            <div class="mb-4">
+                <label for="sourceLang" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Source Language:</label>
+                <select id="sourceLang" class="mt-1 block w-full p-2 bg-input dark:bg-input border border-primary dark:border-primary rounded-md shadow-sm focus:ring focus:ring-primary">
+                    <option value="en-US">English</option>
+                    <option value="es-ES">Spanish</option>
+                    <option value="fr-FR">French</option>
+                    <option value="ar-SA">Arabic</option>
+                    <option value="ar-TN">Tunisian Arabic</option>
+                    <option value="ja-JP">Japanese</option>
+                    <option value="ko-KR">Korean</option>
+                    <option value="ru-RU">Russian</option>
+                </select>
+            </div>
+
+            <!-- Target Language Selector -->
+            <div class="mb-4">
+                <label for="targetLang" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Language:</label>
+                <select id="targetLang" class="mt-1 block w-full p-2 bg-input dark:bg-input border border-primary dark:border-primary rounded-md shadow-sm focus:ring focus:ring-primary">
+                    <option value="es-ES">Spanish</option>
+                    <option value="en-US">English</option>
+                    <option value="fr-FR">French</option>
+                    <option value="ar-SA">Arabic</option>
+                    <option value="ar-TN">Tunisian Arabic</option>
+                    <option value="ja-JP">Japanese</option>
+                    <option value="ko-KR">Korean</option>
+                    <option value="ru-RU">Russian</option>
+                </select>
+            </div>
+
+            <!-- End Call Button -->
+            <div id="controlsContainer" class="mt-4">
+                <button id="endCallBtn" class="w-full bg-destructive dark:bg-destructive-foreground hover:bg-destructive/80 text-destructive-foreground flex items-center justify-center rounded-full p-4 transition-colors">
+                    <i class="fas fa-phone-slash w-6 h-6"></i>
+                </button>
+            </div>
+
+            <!-- Recognition Status -->
+            <div id="recognitionStatus" class="text-sm text-secondary mt-2"></div>
+
+            <!-- Translated Text -->
+            
+        </div>
+    </div>
 </div>
 
-<div id="translationContainer" class="max-w-lg mx-auto p-4 bg-white rounded-lg shadow-md">
-    <div class="mb-4">
-        <label for="sourceLang" class="block text-sm font-medium text-gray-700">Source Language:</label>
-        <select id="sourceLang" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring focus:ring-primary">
-            <option value="en-US">English</option>
-            <option value="es-ES">Spanish</option>
-            <option value="fr-FR">French</option>
-            <option value="ar-SA">Arabic</option>
-            <option value="ar-TN">Tunisian Arabic</option>
-            <option value="ja-JP">Japanese</option>
-            <option value="ko-KR">Korean</option>
-            <option value="ru-RU">Russian</option>
-        </select>
-    </div>
-    <div class="mb-4">
-        <label for="targetLang" class="block text-sm font-medium text-gray-700">Target Language:</label>
-        <select id="targetLang" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring focus:ring-primary">
-            <option value="es-ES">Spanish</option>
-            <option value="en-US">English</option>
-            <option value="fr-FR">French</option>
-            <option value="ar-SA">Arabic</option>
-            <option value="ar-TN">Tunisian Arabic</option>
-            <option value="ja-JP">Japanese</option>
-            <option value="ko-KR">Korean</option>
-            <option value="ru-RU">Russian</option>
-        </select>
-    </div>
-    <div id="controlsContainer" class="mt-4">
-        <button id="endCallBtn" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors">End Call</button>
-    </div>
-    <div id="recognitionStatus" class="text-sm text-gray-600 mt-2"></div>
-    <div id="translatedText" class="text-gray-600 mt-4">
-        <ul id="translationList"></ul>
-    </div>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
@@ -294,10 +325,15 @@
     function displayTranslations() {
         const translationList = document.getElementById('translationList');
         translationList.innerHTML = ''; // Clear the current list
+
         translations.forEach(trans => {
             const listItem = document.createElement('li');
             listItem.textContent = trans; // Set the text content of the list item
             translationList.appendChild(listItem); // Add the list item to the list
         });
+
+        // Scroll to the bottom of the translatedText div
+        const translatedText = document.getElementById('translatedText');
+        translatedText.scrollTop = translatedText.scrollHeight;
     }
 </script>
