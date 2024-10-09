@@ -40,23 +40,21 @@
         <button id="endCallBtn" class="w-full bg-red-500 text-white p-2 rounded-md hover:bg-red-600 transition-colors">End Call</button>
     </div>
     <div id="recognitionStatus" class="text-sm text-gray-600 mt-2"></div>
-    <div id="translatedText" class="text-gray-600 mt-4"></div>
+    <div id="translatedText" class="text-gray-600 mt-4">
+        <ul id="translationList"></ul>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-<script src="https://code.responsivevoice.org/responsivevoice.js?key=Gdf5sSL4"></script>
 <script>
     const roomId = '@ViewData["RoomId"]';
     let localStream, peerConnection, recognition, audioContext, mediaStreamSource, mediaStreamDestination;
     let isListening = false;
-    let isSpeaking = false;
     let isRecognitionActive = false;
     let silenceTimer;
-    const silenceThreshold = 1500; // 1.5 seconds of silence to stop listening
-    const speechQueue = []; // Queue for handling recognized speech
-    let isProcessingQueue = false; // Flag to check if queue is being processed
-
+    const silenceThreshold = 2000; // 1.5 seconds of silence to stop listening
+  
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     const connection = new signalR.HubConnectionBuilder()
@@ -133,12 +131,12 @@
 
         recognition.onend = () => {
             isRecognitionActive = false;
-            if (isListening && !isSpeaking) {
-                setTimeout(() => {
+            if (isListening) {
+              
                     if (!isRecognitionActive) {
                         recognition.start();
                     }
-                }, 1000);
+     
             }
         };
 
@@ -156,7 +154,7 @@
         recognition.start();
     }
 
-    function handleRecognitionResult(event) {
+    async function handleRecognitionResult(event) {
         let finalTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -167,110 +165,38 @@
 
         if (finalTranscript) {
             resetSilenceTimer();
-            addToSpeechQueue(finalTranscript);
+            const translation = await translateText(finalTranscript);
         }
     }
 
-    function addToSpeechQueue(text) {
-        speechQueue.push(text);
-        if (!isProcessingQueue) {
-            processSpeechQueue();
-        }
-    }
+  
 
-    async function processSpeechQueue() {
-        if (speechQueue.length === 0 || isSpeaking) {
-            isProcessingQueue = false;
-            return;
-        }
-
-        isProcessingQueue = true;
-        const sentence = speechQueue.shift();
-        try {
-            const translation = await translateText(sentence);
-            document.getElementById('translatedText').textContent = translation;
-            if (translation) {
-                await speakTranslation(translation);
-            }
-        } catch (error) {
-            console.error("Error in processing queue:", error);
-        }
-
-        // Process the next sentence in the queue after speaking finishes
-        if (speechQueue.length > 0) {
-            processSpeechQueue();
-        } else {
-            isProcessingQueue = false;
-        }
-    }
+    let translationPromiseResolve = null;
 
     async function translateText(text) {
         const sourceLang = document.getElementById('sourceLang').value;
         const targetLang = document.getElementById('targetLang').value;
 
         try {
-            const response = await fetch('/Home/Command', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ Text: text, SourceLang: sourceLang, TargetLang: targetLang }),
+            // Create a new promise for each translation
+            const translationPromise = new Promise((resolve) => {
+                translationPromiseResolve = resolve;
             });
 
-            if (!response.ok) throw new Error("Network response was not ok");
+            // Use the SignalR hub's Command function
+            await connection.invoke("Command", roomId, text, sourceLang, targetLang);
 
-            const data = await response.json();
-            return data.translatedText;
+            // Wait for the translation to be received
+            const translation = await translationPromise;
+            return translation;
         } catch (error) {
             console.error("Translation error:", error);
             return `Translation failed: ${error.message}`;
         }
     }
 
-    function speakTranslation(translation) {
-        return new Promise((resolve) => {
-            const targetLang = document.getElementById('targetLang').value;
-            const voiceMap = {
-                'en-US': 'US English Female',
-                'es-ES': 'Spanish Female',
-                'fr-FR': 'French Female',
-                'ar-SA': 'Arabic Male',
-                'ar-TN': 'Arabic Male',
-                'ja-JP': 'Japanese Female',
-                'ko-KR': 'Korean Female',
-                'ru-RU': 'Russian Female'
-            };
 
-            const voice = voiceMap[targetLang] || 'UK English Female';
-
-            // Stop recognition when speaking starts
-            if (isRecognitionActive) {
-                recognition.stop();
-                isRecognitionActive = false;
-            }
-
-            isSpeaking = true;
-            responsiveVoice.speak(translation, voice, {
-                onstart: () => {
-                    // Stop recognition immediately when speaking starts
-                    if (recognition && isRecognitionActive) {
-                        recognition.stop();
-                    }
-                },
-                onend: () => {
-                    isSpeaking = false;
-                    // Resume recognition after speaking ends
-                    setTimeout(() => {
-                        if (!isSpeaking && isListening && !isRecognitionActive) {
-                            recognition.start();
-                            isRecognitionActive = true;
-                        }
-                    }, 1000);
-                    resolve();
-                }
-            });
-        });
-    }
+   
 
     function restartRecognition() {
         if (recognition) {
@@ -278,10 +204,10 @@
                 recognition.stop();
             }
             setTimeout(() => {
-                if (!isSpeaking && !isRecognitionActive) {
+                if (!isRecognitionActive) {
                     recognition.start();
                 }
-            }, 1000);
+            }, 50);
         }
     }
 
@@ -331,7 +257,6 @@
             recognition.stop();
         }
         isListening = false;
-        isSpeaking = false;
         isRecognitionActive = false;
         document.getElementById('recognitionStatus').textContent = 'Call ended';
     }
@@ -353,4 +278,26 @@
     connection.on("ReceiveIceCandidate", async (candidate) => {
         await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidate)));
     });
+    const translations = []; // Store translations
+
+    // Update the ReceiveTranslation handler
+    connection.on("ReceiveTranslation", (translation, sourceLang, targetLang) => {
+        translations.push(translation); // Add the new translation to the array
+        displayTranslations(); // Call the function to update the UI
+        if (translation && translationPromiseResolve) {
+            translationPromiseResolve(translation);
+            translationPromiseResolve = null; // Reset for the next translation
+        }
+    });
+
+    // Function to display all translations
+    function displayTranslations() {
+        const translationList = document.getElementById('translationList');
+        translationList.innerHTML = ''; // Clear the current list
+        translations.forEach(trans => {
+            const listItem = document.createElement('li');
+            listItem.textContent = trans; // Set the text content of the list item
+            translationList.appendChild(listItem); // Add the list item to the list
+        });
+    }
 </script>
