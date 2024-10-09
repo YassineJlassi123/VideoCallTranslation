@@ -70,7 +70,7 @@
             <div id="recognitionStatus" class="text-sm text-secondary mt-2"></div>
 
             <!-- Translated Text -->
-            
+
         </div>
     </div>
 </div>
@@ -85,17 +85,16 @@
     let isRecognitionActive = false;
     let silenceTimer;
     const silenceThreshold = 2000; // 1.5 seconds of silence to stop listening
-  
+
     const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
     const connection = new signalR.HubConnectionBuilder()
         .withUrl("/VideoCallHub")
         .build();
-
     async function startCall() {
         try {
-            // Request only video, no audio
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            // Request both video and audio
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             const localVideo = document.getElementById('localVideo');
             if (localVideo) {
                 localVideo.srcObject = localStream;
@@ -106,8 +105,8 @@
 
             peerConnection = new RTCPeerConnection(configuration);
 
-            // Only add video tracks, no audio tracks
-            localStream.getVideoTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            // Add both video and audio tracks
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
                 const remoteVideo = document.getElementById('remoteVideo');
@@ -132,9 +131,19 @@
             await peerConnection.setLocalDescription(offer);
             await connection.invoke("SendOffer", roomId, JSON.stringify(offer));
 
+            // Set up audio context for speech recognition
+            setupAudioContext();
+
         } catch (error) {
             console.error("Error starting call:", error);
         }
+    }
+
+    function setupAudioContext() {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        mediaStreamSource = audioContext.createMediaStreamSource(localStream);
+        mediaStreamDestination = audioContext.createMediaStreamDestination();
+        mediaStreamSource.connect(mediaStreamDestination);
     }
 
     function startSpeechRecognition() {
@@ -163,11 +172,9 @@
         recognition.onend = () => {
             isRecognitionActive = false;
             if (isListening) {
-              
-                    if (!isRecognitionActive) {
-                        recognition.start();
-                    }
-     
+                if (!isRecognitionActive) {
+                    recognition.start();
+                }
             }
         };
 
@@ -182,8 +189,10 @@
             }
         };
 
-        recognition.start();
+        // Use the audio from the media stream destination for recognition
+        recognition.start(mediaStreamDestination.stream);
     }
+
 
     async function handleRecognitionResult(event) {
         let finalTranscript = '';
@@ -200,7 +209,7 @@
         }
     }
 
-  
+
 
     let translationPromiseResolve = null;
 
@@ -227,7 +236,7 @@
     }
 
 
-   
+
 
     function restartRecognition() {
         if (recognition) {
@@ -251,7 +260,10 @@
     }
 
     function initializeApp() {
-        startSpeechRecognition();
+        startCall().then(() => {
+            startSpeechRecognition();
+        });
+
         const endCallBtn = document.getElementById('endCallBtn');
         if (endCallBtn) {
             endCallBtn.onclick = async () => {
@@ -273,8 +285,6 @@
         } else {
             console.error("Source language select not found");
         }
-
-        startCall();
     }
 
     function endCall() {
